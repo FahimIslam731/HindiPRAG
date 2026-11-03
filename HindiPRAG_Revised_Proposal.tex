@@ -1,0 +1,80 @@
+\pdfoutput=1
+\documentclass[11pt]{article}
+\usepackage[]{acl}
+\usepackage{times,latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,booktabs}
+\usepackage{url}
+\title{HindiPRAG: Context-Selective Register Alignment for Natural Hindi--Hinglish Dialogue}
+% The group's third author should be added once their details are provided.
+\author{Devarchith Parashara Batchu \\
+  University of California, Davis
+  \And
+  Fahim Abrar Islam \\
+  University of California, Davis \\
+  \texttt{faislam@ucdavis.edu}}
+\begin{document}
+\maketitle
+\begin{abstract}
+A response in Hindi can be semantically correct yet socially unnatural: a close friend and an instructor can receive the same factual answer, but the appropriate level of formality may differ. We propose \emph{HindiPRAG}, a controlled study of sentence-level Hindi/Hinglish response selection using \emph{linked counterfactual contexts}. We compare three matched lightweight pairwise rankers: an independent preference model, a reversal-margin model, and a model that additionally penalizes instability under irrelevant paraphrases. The study includes optional youth-chat Hinglish as a register variation and sentiment as a supporting feature, rather than independent research tasks. We will isolate the effect of paraphrase-invariance regularization using identical training data and feature representations, then test reranked responses from a small pretrained language model. A manually constructed, Hindi-speaker-validated dataset and CPU-capable training plan keep the project executable without paid APIs or guaranteed GPU access.
+\end{abstract}
+
+\section{Introduction}
+Contemporary Hindi dialogue varies with the addressee, social distance and conversational situation. For example, \emph{``haan yaar, kal bhej dunga''} and \emph{``ji, main kal aapko bhej dunga''} convey a similar commitment, but need not be interchangeable. Informal youth-chat Hindi can also contain Romanization, English insertions and particles; indiscriminately adding slang can make a response \emph{less} appropriate. A system must therefore maintain meaning while selecting a register that fits its conversational context.
+
+Multilingual naturalness \citep{guo2025accent}, Hindi honorific usage \citep{mukherjee2025honorific}, Hinglish politeness \citep{priya2024hingpoem}, and code-switched response-language selection \citep{oh2026ola} have already been studied. Rather than claiming that informal Hindi or preference optimization is new, our question is whether \textbf{explicitly linking relevant context changes and irrelevant paraphrases} improves response selection beyond an independent preference model given \emph{the same examples and features}. We will test this narrow, falsifiable claim on held-out dialogue situations. Expected contributions include a reproducible Hindi evaluation set, a lightweight ranking objective, and a matched-baseline analysis.
+
+\section{Problem Definition and Method Design}
+\subsection{Problem Definition}
+A system receives $x=(h,u,r,t)$: a short natural-language dialogue history $h$, a current Hindi/Hinglish utterance $u$, an explicitly described social relationship $r$, and an optional desired style $t$ (neutral Hindi or informal Hindi/Hinglish). It must produce a \emph{complete one- or two-sentence response} consistent with the communicative intention and facts. Our primary experimental task is to select the most appropriate response from two complete, meaning-matched alternatives; a small secondary experiment evaluates response generation. The task operates over conversational sentences, not isolated words, pronouns, sentiment tags or entity labels.
+
+For each \emph{scenario family} $i$, we construct a pair of contexts $c_i^{F}$ and $c_i^{R}$ with the same underlying intention and facts but different social relationships (familiar peer and respectful addressee). Paraphrases $\tilde c_i^F,\tilde c_i^R$ preserve the corresponding relationship. Two full-sentence candidates $y_i^F,y_i^R$ are designed to convey the same act in different registers. We label a \emph{reversal} only if independent Hindi-speaking reviewers favor $y_i^F$ for $c_i^F$ and $y_i^R$ for $c_i^R$; ties or culturally ambiguous cases are recorded rather than forced into an artificial ground truth. This yields a concrete test of responsiveness to meaningful context and invariance to surface rewriting.
+
+\subsection{Method Design}
+\paragraph{Candidate generation and baselines.}
+We will use \texttt{Qwen/Qwen3-0.6B}, a \textbf{0.6B-parameter} publicly released model, in non-thinking mode as a fixed candidate generator \citep{qwen306}. Controlled tests use human-written alternatives to isolate ranking accuracy from candidate-generation failures. For generation, all rankers will share the same sampled response pools. Baselines are: \textbf{B0}, context-conditioned direct model output; \textbf{B1}, a simple relationship-to-register heuristic; and \textbf{B2}, an independent pairwise preference ranker. Additionally, we introduce \textbf{M1}, a margin-only ranker incorporating reversal constraints, and \textbf{M2}, which includes paraphrase-invariance constraints on top of M1's reversal constraints. B2, M1, and M2 use identical training examples, candidate pools, and feature representations, differing only in their optimization objectives. This comparison isolates the contribution of invariance regularization from stronger preference-margin supervision.
+
+\paragraph{CPU-capable ranking model.}
+We build context--response features $\phi(c,y)$ from character $n$-grams over both complete sentences, plus sparse interactions of relationship/style indicators with response-form features (e.g., forms of address, code-mixing and discourse markers). A linear score $s_w(c,y)=w^\top\phi(c,y)$ is optimized with pairwise logistic/Bradley--Terry loss: $\ell(c,y^+,y^-)=\operatorname{softplus}(s_w(c,y^-)-s_w(c,y^+))$. Here $y^+$ denotes a human-preferred sentence, not simply the more informal one.
+
+\paragraph{Linked counterfactual alignment.}
+Define $d_i(c)=s_w(c,y_i^F)-s_w(c,y_i^R)$. A positive difference favors the familiar-register candidate. We propose
+\begin{align}
+\mathcal L_{M2}={}&\mathcal L_{BT}+\lambda\mathcal L_{rev}
+ +\mu\mathcal L_{inv}+\rho\lVert w\rVert_2^2,\label{eq:objective}\\
+\mathcal L_{rev}={}&\sum_{i\in I_{rev}} \bigl[\operatorname{softplus}(m-d_i(c_i^F))\notag\\[-3pt]
+ &\qquad\quad+\operatorname{softplus}(m+d_i(c_i^R))\bigr],\\
+\mathcal L_{inv}={}&\sum_{i,r\in\{F,R\}}\operatorname{Huber}\bigl(d_i(c_i^r)-d_i(\tilde c_i^r)\bigr).
+\end{align}
+The reversal loss encourages preference margins in both relationship contexts, while the invariance loss penalizes changes in relative candidate scores under meaning-preserving paraphrases. We compare three objectives: B2 uses ordinary pairwise loss with $L_2$ regularization; M1 additionally includes the reversal-margin loss (equivalent to setting $\mu=0$ in Equation~\ref{eq:objective}); and M2 includes both reversal and invariance losses. This separates the effect of stronger preference supervision from the contribution of paraphrase consistency. Tied or ambiguous examples are excluded from binary pairwise supervision and reported separately. Hyperparameters $\lambda$, $\mu$, and $m$ are selected using validation families only. This is a lightweight response-ranking study, not a new foundation-model training algorithm.
+
+\paragraph{Informal Hinglish and auxiliary sentiment.}
+A subset permits colloquial, youth-associated Hindi/Hinglish; no response is rewarded merely for containing slang or English. Both Devanagari and Romanized spellings are allowed, with speaker judgments of their appropriateness. A small TF--IDF + logistic-regression classifier estimates positive/neutral/negative sentiment from conversation turns. Its predicted probabilities can optionally enter $\phi(c,y)$ through a response--sentiment interaction. We report macro-F1 and conduct a with/without-predicted-sentiment ablation. This supporting classifier does not determine the preferred register or substitute for the primary sentence-level task.
+
+\section{Related Work}
+\paragraph{Naturalness, politeness, and code-mixing.}
+\citet{guo2025accent} investigate English-influenced multilingual naturalness and alignment, but not controlled changes in Hindi addressee relationships. \citet{mukherjee2025honorific} analyze \emph{third-person} honorific patterns in Hindi/Bengali Wikipedia, rather than choosing direct conversational replies to different recipients. \citet{priya2024hingpoem} introduce a Hinglish dataset for politeness-cause and intensity tagging; we instead evaluate complete reply selection and generation. \citet{yang2025codemix} benchmark language mixing, and \citet{oh2026ola} study output-language alignment in code-switched interactions and improve it with preference optimization. Hence neither Hinglish nor code-switch-aware preference learning alone is our novelty claim.
+
+\paragraph{Social dialogue and linked preferences.}
+\citet{hong2025normgenesis} generate culturally grounded social dialogues in English, Chinese and Korean. Most closely, \citet{bansal2025jpo} propose joint preference optimization across instruction--response pairs; cross-context preference learning itself is therefore not new. Our course-scale hypothesis concerns context-selective Hindi/Hinglish response ranking under linked relationship changes and meaning-preserving paraphrases. We test whether paraphrase-invariance regularization provides benefits beyond independent preference learning and matched reversal-margin supervision. We will report a negative result if these constraints do not improve the matched baselines.
+
+\section{Evaluation Plan and Resources}
+\subsection{Datasets}
+We will author approximately \textbf{200 original scenario families}: \textbf{120 training, 30 validation, 50 test}. Each family supplies two relationship contexts and one meaning-preserving paraphrase of each (up to \textbf{800 contextualized prompts}), with two complete response candidates. Topics include study coordination, requests, apologies, scheduling, congratulations and disappointment. Around one-third of families will allow natural informal Hinglish; this is a \emph{subset}, not a second language dataset. We will group near-duplicate templates and intentions before splitting, and ensure held-out scenarios are not paraphrases of training items. Two Hindi-proficient reviewers will independently label validation/test preferences and identify ambiguous or tied examples; disagreements will be adjudicated or excluded from strict-reversal denominators. A \textbf{24-family training-partition pilot} will check label clarity, generation feasibility and annotation workload. No private chats or unlicensed subtitles are needed.
+
+\subsection{Evaluation Protocol}
+\paragraph{Controlled selection test.}
+Our primary outcome, \textbf{joint reversal accuracy (JRA)}, counts a family as correct only if the model favors each independently validated response in its corresponding changed-relationship context. \textbf{Selective consistency (SC)} additionally requires those preferences to remain correct on the paired neutral paraphrases. We will report test denominators, exclusions and agreement, not only percentages. We will report JRA and SC for B2, M1, and M2. Our primary comparison is \textbf{M2 versus M1 on selective consistency}, with joint reversal accuracy monitored for possible tradeoffs. We will use paired exact McNemar tests on family-level outcomes and family-cluster bootstrap 95\% confidence intervals. Fifty test families provide limited power; small gains may be inconclusive. We will also report relationship-specific errors and heuristic comparisons.
+
+\paragraph{Generated-response check.}
+On a prespecified \textbf{30-family subset} of held-out tests (two relationships per family), we will cache up to three Qwen responses per context and compare \textbf{direct output, M1 reranking, and M2 reranking} using identical response pools. Two blinded Hindi-speaker raters will judge each full response for social appropriateness, semantic/intent fidelity and naturalness (60 contexts $\times$ 3 systems $\times$ 2 raters $=$ \textbf{360 ratings}); ties are allowed and inter-rater agreement is reported. This tests whether ranking gains transfer to generated responses. The supporting sentiment classifier will be assessed on grouped held-out utterances using \textbf{macro-F1} and a confusion matrix, without presenting sentiment accuracy as proof of dialogue quality.
+
+\subsection{Estimated Computing Resources}
+The work will run in \textbf{Google Colab notebooks} with public Python packages (scikit-learn, NumPy/SciPy, PyTorch/Transformers) and saved intermediate results. The \emph{committed} experiment is CPU-feasible: about 800 short text contexts, sparse feature extraction, pairwise logistic optimization, resampling tests and cached responses. \texttt{Qwen3-0.6B} has about 0.6 billion parameters (roughly 1.2 GB in 16-bit weights, plus inference overhead); we will request a standard Colab CPU runtime with at least \textbf{8 GB RAM}, keep generation short (at most 64 new tokens) and generate only the required limited evaluation pool. We plan for \textbf{5 GB of personal storage}. The pilot will record actual memory and per-response latency before full inference; outputs will be checkpointed across sessions. Free Colab GPUs are \emph{not guaranteed} and are \textbf{not required}; no paid API, university compute credit or research-lab AWS account is assumed. If free Colab inference proves too slow, we will use human-written candidates for the \emph{primary} selection test and reduce the explicitly secondary generation sample, reporting that limitation. We will not retrain an LLM.
+
+\clearpage
+\bibliographystyle{acl_natbib}
+\bibliography{references}
+\end{document}
