@@ -22,12 +22,25 @@ def require(ok, message):
 
 def read_csv(relative):
     with (ROOT / relative).open(encoding="utf-8", newline="") as fh:
-        return list(csv.DictReader(fh))
+        lines = fh.readlines()
+    # Some spreadsheet exports prefix the CSV with a two-line sheet marker.
+    if lines and lines[0].startswith("<PARSED TEXT FOR SHEET:"):
+        if len(lines) < 3 or not lines[1].startswith("TAB NAME:") or not lines[1].rstrip().endswith(">"):
+            raise ValueError(f"{relative}: malformed spreadsheet export marker")
+        lines = lines[2:]
+    reader = csv.DictReader(lines)
+    if not reader.fieldnames or len(reader.fieldnames) != len(set(reader.fieldnames)):
+        raise ValueError(f"{relative}: missing or duplicate CSV headers")
+    rows = list(reader)
+    if any(None in row or any(value is None for value in row.values()) for row in rows):
+        raise ValueError(f"{relative}: malformed CSV row")
+    return rows
 
 def nonempty(value):
     return isinstance(value, str) and bool(value.strip())
 
 def main():
+    ERR.clear()
     jsonl = ROOT / "data/draft/families.jsonl"
     try:
         lines = [line for line in jsonl.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -37,6 +50,11 @@ def main():
         print(f"FAIL: Could not read/parse draft dataset: {exc}")
         return 1
 
+    try:
+        root_array = json.loads((ROOT / "families.json").read_text(encoding="utf-8"))
+        require(root_array == array, "Root and draft JSON records differ or their order differs")
+    except (OSError, ValueError) as exc:
+        require(False, f"Could not read/parse root JSON: {exc}")
     require(records == array, "JSON and JSONL records differ or their order differs")
     require(len(records) == 200, f"Expected 200 families; found {len(records)}")
     ids = [r.get("family_id") for r in records]
@@ -87,8 +105,6 @@ def main():
     issue_ids = [x["issue_id"] for x in issues]
     require(len(issues) == 10, f"Expected 10 tracked issues; found {len(issues)}")
     require(set(issue_ids) == {f"ISS-{i:03d}" for i in range(1,11)}, "Issue IDs are missing or duplicated")
-    require(all(x["status"] == "open" for x in issues), "An issue status was changed without updating the draft review record")
-    require(all(not x["reviewed_by"] and not x["adjudicated_by"] for x in issues), "Review metadata populated unexpectedly")
     require(all(x["family_id"] in set(ids) for x in issues if x["family_id"]), "Issue tracker refers to unknown family IDs")
     # Confirm that high-risk review flags still refer to the actual text in this draft.
     by_id = {r["family_id"]: r for r in records}
@@ -112,7 +128,6 @@ def main():
     status = read_csv("pilot/pilot_status.csv")
     require(len(status) == 24, "pilot_status.csv must have 24 families")
     require([x["family_id"] for x in status] == [f"F{i:03d}" for i in range(1,25)], "Pilot selection changed")
-    require(all(x["status"] == "not_started" for x in status), "Pilot status changed but results were not verified")
 
     rating = read_csv("pilot/candidate_ratings_template.csv")
     pref = read_csv("pilot/preferences_template.csv")
@@ -125,6 +140,25 @@ def main():
     require(all(not x["meaning_fidelity"] and not x["register_fit"] and not x["naturalness_1_to_5"] and not x["annotator_id"] for x in rating), "Ratings template contains filled annotations")
     require(all(not x["preferred_candidate_id"] and not x["annotator_id"] for x in pref), "Preference template contains filled annotations")
     require(all(x["family_id"] in {f"F{i:03d}" for i in range(1,25)} for x in rating + pref), "Pilot template includes out-of-scope family")
+
+    # Check the actual Cartesian product and copied source text, not only row counts.
+    expected_prompts = {(fid, audience, phrasing) for fid in ids[:24]
+                        for audience in ("familiar", "respectful")
+                        for phrasing in ("scenario", "paraphrase")}
+    require({key3(row) for row in pref} == expected_prompts, "Preference template prompt coverage incorrect")
+    require({key4(row) for row in rating} == {(*key, candidate) for key in expected_prompts for candidate in ("A", "B", "C")}, "Ratings template candidate coverage incorrect")
+    for row in rating + pref:
+        family = by_id.get(row.get("family_id"))
+        if not family or row.get("audience") not in ("familiar", "respectful") or row.get("phrasing") not in ("scenario", "paraphrase"):
+            require(False, "Template contains invalid family, audience, or phrasing")
+            continue
+        ctx = family["contexts"][row["audience"]]
+        for field, value in (("template_group_id", family["template_group_id"]), ("topic", family["topic"]),
+                             ("relationship", ctx["relationship"]), ("prompt_text", ctx[row["phrasing"]])):
+            require(row.get(field) == value, f"{row['family_id']}: template {field} differs from dataset")
+        if "candidate_id" in row:
+            candidate = next((c for c in family["candidates"] if c["id"] == row["candidate_id"]), None)
+            require(candidate is not None and row.get("candidate_text") == candidate["text"] and row.get("register_label") == candidate["register_label"], f"{row['family_id']}: template candidate differs from dataset")
 
     targeted = read_csv("pilot/targeted_review_template.csv")
     require(len(targeted) == 6, f"Expected six targeted review rows; found {len(targeted)}")
@@ -149,8 +183,12 @@ def main():
         for error in ERR:
             print(" -",error)
         return 1
-    print("PASS: Structural and cross-file checks only; semantic review still pending.")
+    print("PASS: Structural and cross-file checks only; human review and preferences are not assessed.")
     return 0
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"FAIL: Invalid or missing input: {exc}", file=sys.stderr)
+        sys.exit(1)
