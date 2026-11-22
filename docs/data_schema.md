@@ -31,3 +31,11 @@ Four experiment presentations can be constructed from each family: familiar/scen
 ## Validation and data provenance
 
 `python scripts/validate_release.py` checks IDs, required fields, candidate tags, JSON/JSONL parity, issue references, and blank pilot-template labels. This is a **syntactic and cross-file** check only. It does not certify linguistic quality, semantic equivalence, task suitability, cultural validity, or statistical independence.
+
+## Stage 2 integrity checks
+
+The project owner confirms all 200 families were reviewed and approved, with no corrections required, and the three-candidate design is approved. Individual review records are not present in this repository; preference labels remain uncollected in the dataset. Automated checks do not verify that owner-confirmed review.
+
+The validator also compares the root `families.json` to the draft array and checks pilot template coverage and copied source text against the dataset. `pilot/issues_log.csv` contains a two-line spreadsheet export marker before its CSV header; the validator accepts this existing wrapper without altering the issue records. Run the focused regression tests with `python -m unittest discover -s tests -v`.
+
+The annotation guide specifies a best-of-three preference. How that choice maps to the proposal's pairwise comparisons remains a protocol question; a best choice alone does not order the other two candidates.

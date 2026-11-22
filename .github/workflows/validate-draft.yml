@@ -4,17 +4,27 @@ on:
   push:
     paths:
       - 'data/draft/**'
+      - 'families.json'
+      - 'tests/**'
+      - 'web/annotation/**'
       - 'docs/**'
       - 'pilot/**'
-      - 'scripts/validate_release.py'
+      - 'scripts/**'
+      - 'data/splits.json'
+      - 'data/generation_subset.json'
       - 'README.md'
       - 'validation_report.md'
       - '.github/workflows/validate-draft.yml'
   pull_request:
     paths:
       - 'data/draft/**'
+      - 'families.json'
+      - 'tests/**'
+      - 'web/annotation/**'
       - 'pilot/**'
-      - 'scripts/validate_release.py'
+      - 'scripts/**'
+      - 'data/splits.json'
+      - 'data/generation_subset.json'
       - '.github/workflows/validate-draft.yml'
 
 jobs:
@@ -25,5 +35,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Verify draft schema, cross-file consistency and pilot templates
         run: python scripts/validate_release.py
+      - name: Run validation regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Check reviewer interface JavaScript
+        run: |
+          node --check web/annotation/core.js
+          node --check web/annotation/interface.js

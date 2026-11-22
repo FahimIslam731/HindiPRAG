@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+.env.*
+annotations/
+private/
+backups/
+releases/
+*-backup.json
+*-crosswalk.csv
+*_crosswalk.csv

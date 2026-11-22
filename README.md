@@ -1,6 +1,6 @@
-# HindiPRAG — auditable draft dataset and pilot package
+# HindiPRAG — annotation-ready engineering and draft dataset
 
-**Status:** **Draft / pre-annotation.** This repository does **not** contain human preference ground truth or completed model experiments. Files here are usable for annotation preparation and structural quality assurance, **not** a claimed validated benchmark.
+**Status:** **Annotation-ready infrastructure; dataset draft, pre-annotation and not frozen.** This repository does **not** contain human preference ground truth or completed model experiments. Files here are usable for annotation preparation and structural quality assurance, **not** a claimed validated benchmark.
 
 ## What's included
 
@@ -50,3 +50,9 @@ The script checks record shape, ordering, completeness, candidate tags, JSON/JSO
 ## Documented limitations
 
 **The 24-family pilot is not yet conducted.** The issues log includes proposals and observable text discrepancies, **not** signed-off human corrections. This package does not claim inter-annotator agreement, model accuracy, a human-validated training set, or final semantic equivalence. The sample of F001–F024 is convenient rather than statistically representative.
+
+## Stage 2 infrastructure
+
+The import, blinded reviewer UI, coverage, grouped splits, backup/restore and fixed-pair freeze-gate software are implemented. Reviewer 1 covers 800 contexts; independent Reviewer 2 covers 416. No genuine preference judgments have been collected. The actual dataset remains unfrozen pending genuine annotations, independence evidence, required adjudications and documented fixed-pair mapping approval.
+
+Run `python3 -B -m unittest discover -s tests -v` with Python 3.9+ and Node.js 18+. Tests generate synthetic answers only in temporary directories. See `docs/stage2/annotation_handoff.md` for private packet preparation and `docs/stage2/verification.md` for verification limits. Generated packets, answers, crosswalks and releases belong outside this public repository. Only packet-free interface source is published under `web/annotation/`.
