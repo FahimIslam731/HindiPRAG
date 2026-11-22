@@ -1,0 +1,29 @@
+name: Validate HindiPRAG draft
+
+on:
+  push:
+    paths:
+      - 'data/draft/**'
+      - 'docs/**'
+      - 'pilot/**'
+      - 'scripts/validate_release.py'
+      - 'README.md'
+      - 'validation_report.md'
+      - '.github/workflows/validate-draft.yml'
+  pull_request:
+    paths:
+      - 'data/draft/**'
+      - 'pilot/**'
+      - 'scripts/validate_release.py'
+      - '.github/workflows/validate-draft.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify draft schema, cross-file consistency and pilot templates
+        run: python scripts/validate_release.py
